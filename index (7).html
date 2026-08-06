@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>SME 회로 검색 사이트</title>
+<link rel="preconnect" href="https://cdnjs.cloudflare.com">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/JetBrains-Mono/2.304/JetBrainsMono.min.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --bg:#12161c;
+    --panel:#1a2029;
+    --panel-2:#212936;
+    --line:#2a3341;
+    --text:#e7ebf1;
+    --sub:#8b96a8;
+    --amber:#ffb020;
+    --amber-dim:#5c4520;
+    --blue:#5aa9ff;
+    --purple:#b98af7;
+    --orange:#ff8a4c;
+    --green:#4ade80;
+    --red:#f9776d;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Pretendard","Malgun Gothic","Apple SD Gothic Neo",sans-serif;
+    min-height:100vh;
+    background-image:
+      radial-gradient(circle at 15% 0%, rgba(255,176,32,0.06), transparent 45%),
+      radial-gradient(circle at 100% 20%, rgba(90,169,255,0.05), transparent 50%);
+  }
+  .mono{font-family:"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;}
+
+  header{
+    position:sticky; top:0; z-index:20;
+    background:rgba(18,22,28,0.92);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+    padding:14px 16px 16px;
+  }
+  .brand{
+    display:flex; align-items:baseline; gap:8px; margin-bottom:12px;
+  }
+  .brand .tag{
+    font-size:11px; letter-spacing:.14em; color:var(--amber);
+    font-family:"JetBrains Mono", monospace; font-weight:600;
+    border:1px solid var(--amber-dim); padding:2px 6px; border-radius:3px;
+  }
+  .brand h1{font-size:15px; margin:0; font-weight:600; color:var(--text);}
+  .brand h1 span{color:var(--sub); font-weight:400;}
+
+  .search-wrap{position:relative;}
+  #q{
+    width:100%; padding:14px 44px 14px 16px; border-radius:12px;
+    border:1.5px solid var(--line); background:var(--panel); color:var(--text);
+    font-size:17px; font-family:"JetBrains Mono", monospace; letter-spacing:.02em;
+    outline:none; transition:border-color .15s, box-shadow .15s;
+  }
+  #q::placeholder{color:#566072; font-family:-apple-system,sans-serif; font-size:14px; letter-spacing:0;}
+  #q:focus{border-color:var(--amber); box-shadow:0 0 0 3px rgba(255,176,32,0.15);}
+  .clear-btn{
+    position:absolute; right:8px; top:50%; transform:translateY(-50%);
+    width:30px; height:30px; border-radius:8px; border:none;
+    background:var(--panel-2); color:var(--sub); font-size:16px; cursor:pointer;
+    display:none; align-items:center; justify-content:center;
+  }
+  .clear-btn.show{display:flex;}
+  .hint{margin-top:8px; font-size:12px; color:var(--sub);}
+
+  main{max-width:640px; margin:0 auto; padding:16px; padding-bottom:60px;}
+
+  /* Suggestion picker */
+  .picker{display:flex; flex-direction:column; gap:6px; margin-top:4px;}
+  .picker-item{
+    display:flex; align-items:center; gap:10px;
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:11px 12px; cursor:pointer; text-align:left;
+  }
+  .picker-item:active{background:var(--panel-2);}
+  .picker-item .code{font-size:14px; color:var(--amber); min-width:118px;}
+  .picker-item .name{font-size:12.5px; color:var(--sub); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+
+  /* Empty / not found states */
+  .state{
+    text-align:center; padding:56px 20px; color:var(--sub);
+  }
+  .state .icon{font-size:34px; margin-bottom:10px; opacity:.7;}
+  .state .msg{font-size:14px; line-height:1.6;}
+  .state .msg b{color:var(--text);}
+
+  /* Result trace list */
+  .trace{position:relative; margin-top:18px;}
+  .trace::before{
+    content:""; position:absolute; left:20px; top:8px; bottom:8px; width:2px;
+    background:linear-gradient(var(--line), var(--line));
+  }
+  .row{
+    position:relative; display:flex; gap:12px; padding:10px 8px 10px 44px;
+    border-radius:10px; margin-bottom:2px;
+  }
+  .row .dot{
+    position:absolute; left:14px; top:18px; width:14px; height:14px; border-radius:50%;
+    background:var(--panel-2); border:2px solid var(--line);
+  }
+  .row .body{flex:1; min-width:0; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px;}
+  .row .top-line{display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap;}
+  .row .code{font-size:14.5px; font-weight:600; color:var(--text);}
+  .row .badge{
+    font-size:10px; font-weight:700; letter-spacing:.03em; padding:2px 6px; border-radius:5px;
+    font-family:"JetBrains Mono", monospace;
+  }
+  .badge-FSP{background:rgba(90,169,255,0.15); color:var(--blue);}
+  .badge-FMM{background:rgba(185,138,247,0.15); color:var(--purple);}
+  .badge-FRM{background:rgba(255,138,76,0.15); color:var(--orange);}
+  .row .no{margin-left:auto; font-size:10.5px; color:#566072;}
+  .row .name{font-size:12.5px; color:var(--sub); line-height:1.5;}
+  .row .meta{font-size:10.5px; color:#566072; margin-top:5px;}
+
+  .row.match{padding-left:44px;}
+  .row.match .dot{
+    width:16px; height:16px; left:13px; top:22px;
+    background:var(--amber); border-color:var(--amber);
+    box-shadow:0 0 0 4px rgba(255,176,32,0.18), 0 0 14px rgba(255,176,32,0.55);
+  }
+  .row.match .body{
+    background:linear-gradient(180deg, rgba(255,176,32,0.10), rgba(255,176,32,0.03));
+    border:1.5px solid var(--amber);
+  }
+  .row.match .code{color:var(--amber); font-size:16.5px;}
+  .row.match .name{color:var(--text); font-size:13.5px;}
+  .row.context{opacity:.72;}
+  .row.context .body{padding:8px 12px;}
+
+  .section-label{
+    font-size:10.5px; color:#566072; letter-spacing:.1em; margin:14px 0 6px 44px;
+    font-family:"JetBrains Mono", monospace;
+  }
+
+  footer{
+    text-align:center; padding:20px; color:#3d4759; font-size:11px;
+  }
+
+  @media (min-width:700px){
+    main{padding-top:28px;}
+    .brand h1{font-size:16px;}
+    #q{font-size:16px;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="tag mono">P4-BLD</span>
+    <h1>SME 회로 검색 사이트 <span>· 소방설비 회로번호 조회</span></h1>
+  </div>
+  <div class="search-wrap">
+    <input id="q" class="mono" type="text" inputmode="text" autocomplete="off" autocapitalize="characters"
+      placeholder="회로번호 입력 (예: N088L01D001)">
+    <button class="clear-btn" id="clearBtn" aria-label="지우기">✕</button>
+  </div>
+  <div class="hint" id="hint">회로번호를 입력하면 위/아래 인접 회로 5개씩 함께 표시됩니다.</div>
+</header>
+
+<main id="main">
+  <div class="state" id="idleState">
+    <div class="icon">🔎</div>
+    <div class="msg">회로번호를 입력해 주세요.<br>일부만 입력해도 검색됩니다.</div>
+  </div>
+</main>
+
+<footer>총 <span id="totalCount" class="mono"></span>개 회로 · P4 복합동 소방설비 리스트</footer>
+
+<script>
+const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRaF9eZmbGsSYJihQFrobOZondTlWFreTWfFO-KWqIjMcAiycIUL1ndRbVNHWxiuGwpEAR_vMw9GzOQ/pub?gid=0&single=true&output=csv";
+
+const EMBEDDED_DATA = [{"no": 1612, "code": "N088L01D001", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-01", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1614, "code": "N088L01D002", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-02", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1616, "code": "N088L01D003", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-03", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1618, "code": "N088L01D004", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-04", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1620, "code": "N088L01D005", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-05", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1622, "code": "N088L01D006", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-06", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1624, "code": "N088L01D007", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-07", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1626, "code": "N088L01D008", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-08", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1628, "code": "N088L01D009", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-09", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1630, "code": "N088L01D010", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-10", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1631, "code": "N088L01D011", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-11", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1632, "code": "N088L01D012", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-12", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1633, "code": "N088L01D013", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-13", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1634, "code": "N088L01D014", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-14", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1635, "code": "N088L01D015", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-15", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1636, "code": "N088L01D016", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-16", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1637, "code": "N088L01D017", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-17", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1638, "code": "N088L01D018", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-18", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1639, "code": "N088L01D019", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-19", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1640, "code": "N088L01D020", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-20", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1641, "code": "N088L01D021", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-21", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1642, "code": "N088L01D022", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-22", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1643, "code": "N088L01D023", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-23", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1644, "code": "N088L01D024", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-24", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1645, "code": "N088L01D025", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-25", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1646, "code": "N088L01D026", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-26", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1647, "code": "N088L01D027", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-27", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1648, "code": "N088L01D028", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-28", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1649, "code": "N088L01D029", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-29", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1650, "code": "N088L01D030", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-30", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1651, "code": "N088L01D031", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-31", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1652, "code": "N088L01D032", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-32", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1653, "code": "N088L01D033", "name": "P4 복합동 PH4 8F SCRUBBER-9_PV-11 존 연기감지기-33", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1654, "code": "N088L01D034", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-01", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1655, "code": "N088L01D035", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-02", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1656, "code": "N088L01D036", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-03", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1657, "code": "N088L01D037", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-04", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1658, "code": "N088L01D038", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-05", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1659, "code": "N088L01D039", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-06", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1660, "code": "N088L01D040", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-07", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1661, "code": "N088L01D041", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-08", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1662, "code": "N088L01D042", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-09", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1663, "code": "N088L01D043", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-10", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1664, "code": "N088L01D044", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-11", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1665, "code": "N088L01D045", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-12", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1666, "code": "N088L01D046", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-13", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1667, "code": "N088L01D047", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-14", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1668, "code": "N088L01D048", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-15", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1669, "code": "N088L01D049", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-16", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1670, "code": "N088L01D050", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-17", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1671, "code": "N088L01D051", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-18", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1672, "code": "N088L01D052", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-19", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1673, "code": "N088L01D053", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-20", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1674, "code": "N088L01D054", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-21", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1675, "code": "N088L01D055", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-22", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1676, "code": "N088L01D056", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-23", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1677, "code": "N088L01D057", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-24", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1678, "code": "N088L01D058", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-25", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1679, "code": "N088L01D059", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-26", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1680, "code": "N088L01D060", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-27", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1681, "code": "N088L01D061", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-28", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1682, "code": "N088L01D062", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-29", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1683, "code": "N088L01D063", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-30", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1684, "code": "N088L01D064", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-31", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1685, "code": "N088L01D065", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-32", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1686, "code": "N088L01D066", "name": "P4 복합동 PH4 8F SCRUBBER-10_PV-12 존 연기감지기-33", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1687, "code": "N088L01D067", "name": "P4 복합동 PH4 8F #10 EPS-1_PV-12 존 연기감지기-01", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1688, "code": "N088L01D075", "name": "P4 복합동 PH4 9F DS(F,51)_8F-PV-11 존 연기감지기-01", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1613, "code": "N088L01D076", "name": "P4 복합동 PH4 9F DS(F,51)_8F-PV-11 존 연기감지기-02", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1615, "code": "N088L01D077", "name": "P4 복합동 PH4 9F DS(F,53)_8F-PV-11 존 연기감지기-01", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1617, "code": "N088L01D078", "name": "P4 복합동 PH4 9F DS(F,53)_8F-PV-11 존 연기감지기-02", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1619, "code": "N088L01D079", "name": "P4 복합동 PH4 9F DS(A,53~53)_8F-PV-11 존 연기감지기-01", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1621, "code": "N088L01D080", "name": "P4 복합동 PH4 9F DS(A,53~53)_8F-PV-11 존 연기감지기-02", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1623, "code": "N088L01D081", "name": "P4 복합동 PH4 9F DS(A,54~55)_8F-PV-12 존 연기감지기-01", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1625, "code": "N088L01D082", "name": "P4 복합동 PH4 9F DS(A,54~55)_8F-PV-12 존 연기감지기-02", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1627, "code": "N088L01D083", "name": "P4 복합동 PH4 9F DS(A,56~58)_8F-PV-12 존 연기감지기-01", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1629, "code": "N088L01D084", "name": "P4 복합동 PH4 9F DS(A,56~58)_8F-PV-12 존 연기감지기-02", "type": "FSP", "sheet": "N88L01", "node": "NODE088"}, {"no": 1689, "code": "N088L01M001", "name": "P4 복합동 PH4 8F SCRUBBER-9_소화전발신기-51", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1691, "code": "N088L01M002", "name": "P4 복합동 PH4 8F SCRUBBER-9_경종-51", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1693, "code": "N088L01M003", "name": "P4 복합동 PH4 8F SCRUBBER-9_소화전발신기-52", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1695, "code": "N088L01M004", "name": "P4 복합동 PH4 8F SCRUBBER-9_경종-52", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1697, "code": "N088L01M005", "name": "P4 복합동 PH4 8F SCRUBBER-9_소화전발신기-53", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1699, "code": "N088L01M006", "name": "P4 복합동 PH4 8F SCRUBBER-9_경종-53", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1701, "code": "N088L01M007", "name": "P4 복합동 PH4 8F SCRUBBER-9_소화전발신기-54", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1702, "code": "N088L01M008", "name": "P4 복합동 PH4 8F SCRUBBER-9_경종-54", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1703, "code": "N088L01M013", "name": "P4 복합동 PH4 8F SCRUBBER-10_소화전발신기-55", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1704, "code": "N088L01M014", "name": "P4 복합동 PH4 8F SCRUBBER-10_경종-55", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1705, "code": "N088L01M015", "name": "P4 복합동 PH4 8F SCRUBBER-10_소화전발신기-56", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1706, "code": "N088L01M016", "name": "P4 복합동 PH4 8F SCRUBBER-10_경종-56", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1707, "code": "N088L01M017", "name": "P4 복합동 PH4 8F SCRUBBER-10_소화전발신기-57", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1708, "code": "N088L01M018", "name": "P4 복합동 PH4 8F SCRUBBER-10_경종-57", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1709, "code": "N088L01M019", "name": "P4 복합동 PH4 8F SCRUBBER-10_소화전발신기-58", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1710, "code": "N088L01M020", "name": "P4 복합동 PH4 8F SCRUBBER-10_경종-58", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1711, "code": "N088L01M044", "name": "P4 복합동 PH4 9F DS(F,51)_8F PV-11 존 SVP 수계 수동기동", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1712, "code": "N088L01M045", "name": "P4 복합동 PH4 9F DS(F,51)_8F PV-11 존 SVP 밸브주의", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1713, "code": "N088L01M046", "name": "P4 복합동 PH4 9F DS(F,51)_8F PV-11 존 SVP 밸브개방", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1714, "code": "N088L01M047", "name": "P4 복합동 PH4 9F DS(F,51)_8F PV-11 존 사이렌", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1715, "code": "N088L01M048", "name": "P4 복합동 PH4 9F DS(F,53)_8F PV-11 존 SVP 수계 수동기동", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1716, "code": "N088L01M049", "name": "P4 복합동 PH4 9F DS(F,53)_8F PV-11 존 SVP 밸브주의", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1717, "code": "N088L01M050", "name": "P4 복합동 PH4 9F DS(F,53)_8F PV-11 존 SVP 밸브개방", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1718, "code": "N088L01M051", "name": "P4 복합동 PH4 9F DS(F,53)_8F PV-11 존 사이렌", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1719, "code": "N088L01M052", "name": "P4 복합동 PH4 9F DS(A,51-53)_8F PV-11 존 SVP 수계 수동기동", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1720, "code": "N088L01M053", "name": "P4 복합동 PH4 9F DS(A,51-53)_8F PV-11 존 SVP 밸브주의", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1721, "code": "N088L01M054", "name": "P4 복합동 PH4 9F DS(A,51-53)_8F PV-11 존 SVP 밸브개방", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1722, "code": "N088L01M055", "name": "P4 복합동 PH4 9F DS(A,51-53)_8F PV-11 존 사이렌", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1723, "code": "N088L01M056", "name": "P4 복합동 PH4 9F DS(A,54-55)_8F PV-12 존 SVP 수계 수동기동", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1724, "code": "N088L01M057", "name": "P4 복합동 PH4 9F DS(A,54-55)_8F PV-12 존 SVP 밸브주의", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1725, "code": "N088L01M058", "name": "P4 복합동 PH4 9F DS(A,54-55)_8F PV-12 존 SVP 밸브개방", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1726, "code": "N088L01M059", "name": "P4 복합동 PH4 9F DS(A,54-55)_8F PV-12 존 사이렌", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1727, "code": "N088L01M060", "name": "P4 복합동 PH4 9F DS(A,56-58)_8F PV-12 존 SVP 수계 수동기동", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1728, "code": "N088L01M061", "name": "P4 복합동 PH4 9F DS(A,56-58)_8F PV-12 존 SVP 밸브주의", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1729, "code": "N088L01M062", "name": "P4 복합동 PH4 9F DS(A,56-58)_8F PV-12 존 SVP 밸브개방", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1730, "code": "N088L01M063", "name": "P4 복합동 PH4 9F DS(A,56-58)_8F PV-12 존 사이렌", "type": "FRM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1731, "code": "N088L01M064", "name": "P4 복합동 PH2 8F_F/S-001", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1732, "code": "N088L01M065", "name": "P4 복합동 PH2 8F_F/S-002", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1733, "code": "N088L01M066", "name": "P4 복합동 PH2 8F_F/S-003", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1734, "code": "N088L01M067", "name": "P4 복합동 PH2 8F_F/S-004", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1735, "code": "N088L01M068", "name": "P4 복합동 PH4 8F_F/S-004", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1736, "code": "N088L01M069", "name": "P4 복합동 PH4 8F_F/S-005", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1737, "code": "N088L01M070", "name": "P4 복합동 PH4 8F_F/S-006", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1738, "code": "N088L01M071", "name": "P4 복합동 PH4 8F_F/S-007", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1739, "code": "N088L01M072", "name": "P4 복합동 PH4 8F_F/S-008", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1740, "code": "N088L01M073", "name": "P4 복합동 PH4 8F_F/S-009", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1741, "code": "N088L01M074", "name": "P4 복합동 PH4 8F_F/S-010", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1742, "code": "N088L01M075", "name": "P4 복합동 PH4 8F_F/S-011", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1690, "code": "N088L01M076", "name": "P4 복합동 PH4 8F_F/S-012", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1692, "code": "N088L01M077", "name": "P4 복합동 PH4 8F_F/S-013", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1694, "code": "N088L01M078", "name": "P4 복합동 PH2 8F_F/S-015", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1696, "code": "N088L01M079", "name": "P4 복합동 PH2 8F_F/S-016", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1698, "code": "N088L01M080", "name": "P4 복합동 PH2 8F_F/S-017", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1700, "code": "N088L01M081", "name": "P4 복합동 PH2 8F_F/S-018", "type": "FMM", "sheet": "N88L01", "node": "NODE088"}, {"no": 1743, "code": "N088L02D001", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-01", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1745, "code": "N088L02D002", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-02", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1746, "code": "N088L02D003", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-03", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1747, "code": "N088L02D004", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-04", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1748, "code": "N088L02D005", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-05", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1749, "code": "N088L02D006", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-06", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1750, "code": "N088L02D007", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-07", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1751, "code": "N088L02D008", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-08", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1752, "code": "N088L02D009", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-09", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1753, "code": "N088L02D010", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-10", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1754, "code": "N088L02D011", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-11", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1755, "code": "N088L02D012", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-12", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1756, "code": "N088L02D013", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-13", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1757, "code": "N088L02D014", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-14", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1758, "code": "N088L02D015", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-15", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1759, "code": "N088L02D016", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-16", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1760, "code": "N088L02D017", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-17", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1761, "code": "N088L02D018", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-18", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1762, "code": "N088L02D019", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-19", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1763, "code": "N088L02D020", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-20", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1764, "code": "N088L02D021", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-21", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1765, "code": "N088L02D022", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-22", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1766, "code": "N088L02D023", "name": "P4 복합동 PH4 8F SCRUBBER-11_PV-13 존 연기감지기-23", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1767, "code": "N088L02D028", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-01", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1768, "code": "N088L02D029", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-02", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1769, "code": "N088L02D030", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-03", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1770, "code": "N088L02D031", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-04", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1771, "code": "N088L02D032", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-05", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1772, "code": "N088L02D033", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-06", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1773, "code": "N088L02D034", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-07", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1774, "code": "N088L02D035", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-08", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1775, "code": "N088L02D036", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-09", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1776, "code": "N088L02D038", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-11", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1777, "code": "N088L02D041", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-12", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1778, "code": "N088L02D042", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-13", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1779, "code": "N088L02D043", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-14", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1780, "code": "N088L02D044", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-15", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1781, "code": "N088L02D045", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-16", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1782, "code": "N088L02D046", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-17", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1783, "code": "N088L02D047", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-18", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1784, "code": "N088L02D048", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-19", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1785, "code": "N088L02D049", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-20", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1786, "code": "N088L02D050", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-21", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1787, "code": "N088L02D051", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-22", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1788, "code": "N088L02D052", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-23", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1789, "code": "N088L02D053", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-24", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1790, "code": "N088L02D054", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-25", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1791, "code": "N088L02D055", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-26", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1792, "code": "N088L02D056", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-27", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1793, "code": "N088L02D057", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-28", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1794, "code": "N088L02D058", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-29", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1795, "code": "N088L02D059", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-30", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1796, "code": "N088L02D060", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-31", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1797, "code": "N088L02D061", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-32", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1798, "code": "N088L02D062", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-33", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1799, "code": "N088L02D063", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-34", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1800, "code": "N088L02D064", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-35", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1801, "code": "N088L02D065", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-36", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1802, "code": "N088L02D066", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-37", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1803, "code": "N088L02D067", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-38", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1804, "code": "N088L02D068", "name": "P4 복합동 PH4 8F FUTURE_PV-14 존 연기감지기-39", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1805, "code": "N088L02D069", "name": "P4 복합동 PH4 9F DS(F,56~59)_8F-PV-12 존 연기감지기-01", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1806, "code": "N088L02D070", "name": "P4 복합동 PH4 9F DS(F,56~59)_8F-PV-12 존 연기감지기-02", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1807, "code": "N088L02D071", "name": "P4 복합동 PH4 9F DS(F,61~63)_8F-PV-14 존 연기감지기-01", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1808, "code": "N088L02D072", "name": "P4 복합동 PH4 9F DS(F,61~63)_8F-PV-14 존 연기감지기-02", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1809, "code": "N088L02D073", "name": "P4 복합동 PH4 9F DS(A,59~60)_8F-PV-13 존 연기감지기-01", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1810, "code": "N088L02D074", "name": "P4 복합동 PH4 9F DS(A,59~60)_8F-PV-13 존 연기감지기-02", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1811, "code": "N088L02D075", "name": "P4 복합동 PH4 9F DS(A,64)_8F-PV-14 존 연기감지기-01", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1744, "code": "N088L02D076", "name": "P4 복합동 PH4 9F DS(A,64)_8F-PV-14 존 연기감지기-02", "type": "FSP", "sheet": "N88L02", "node": "NODE088"}, {"no": 1812, "code": "N088L02M001", "name": "P4 복합동 PH4 8F SCRUBBER-11_소화전발신기-60", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1813, "code": "N088L02M002", "name": "P4 복합동 PH4 8F SCRUBBER-11_경종-60", "type": "FRM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1814, "code": "N088L02M009", "name": "P4 복합동 PH4 8F 기계실(FUTURE)_소화전빌신기-61", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1815, "code": "N088L02M010", "name": "P4 복합동 PH4 8F 기계실(FUTURE)_경종-61", "type": "FRM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1816, "code": "N088L02M011", "name": "P4 복합동 PH4 8F 기계실(FUTURE)_소화전빌신기-62", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1817, "code": "N088L02M012", "name": "P4 복합동 PH4 8F 기계실(FUTURE)_경종-62", "type": "FRM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1818, "code": "N088L02M030", "name": "P4 복합동 PH4 9F DS(F,56-59)_8F PV-12 존 SVP 수계 수동기동", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1819, "code": "N088L02M031", "name": "P4 복합동 PH4 9F DS(F,56-59)_8F PV-12 존 SVP 밸브주의", "type": "FRM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1820, "code": "N088L02M032", "name": "P4 복합동 PH4 9F DS(F,56-59)_8F PV-12 존 SVP 밸브개방", "type": "FRM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1821, "code": "N088L02M033", "name": "P4 복합동 PH4 9F DS(F,56-59)_8F PV-12 존 사이렌", "type": "FRM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1822, "code": "N088L02M034", "name": "P4 복합동 PH4 9F DS(F,61-63)_8F PV-14 존 SVP 수계 수동기동", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1823, "code": "N088L02M035", "name": "P4 복합동 PH4 9F DS(F,61-63)_8F PV-14 존 SVP 밸브주의", "type": "FRM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1824, "code": "N088L02M036", "name": "P4 복합동 PH4 9F DS(F,61-63)_8F PV-14 존 SVP 밸브개방", "type": "FRM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1825, "code": "N088L02M037", "name": "P4 복합동 PH4 9F DS(F,61-63)_8F PV-14 존 사이렌", "type": "FRM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1826, "code": "N088L02M038", "name": "P4 복합동 PH4 9F DS(A,59-60)_8F PV-14 존 SVP 수계 수동기동", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1827, "code": "N088L02M039", "name": "P4 복합동 PH4 9F DS(A,59-60)_8F PV-14 존 SVP 밸브주의", "type": "FRM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1828, "code": "N088L02M040", "name": "P4 복합동 PH4 9F DS(A,59-60)_8F PV-14 존 SVP 밸브개방", "type": "FRM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1829, "code": "N088L02M041", "name": "P4 복합동 PH4 9F DS(A,59-60)_8F PV-14 존 사이렌", "type": "FRM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1830, "code": "N088L02M042", "name": "P4 복합동 PH4 9F DS(A,64)_8F PV-14 존 SVP 수계 수동기동", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1831, "code": "N088L02M043", "name": "P4 복합동 PH4 9F DS(A,64)_8F PV-14 존 SVP 밸브주의", "type": "FRM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1832, "code": "N088L02M044", "name": "P4 복합동 PH4 9F DS(A,64)_8F PV-14 존 SVP 밸브개방", "type": "FRM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1833, "code": "N088L02M045", "name": "P4 복합동 PH4 9F DS(A,64)_8F PV-14 존 사이렌", "type": "FRM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1834, "code": "N088L02M046", "name": "P4 복합동 PH4 8F_F/S-014", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1835, "code": "N088L02M047", "name": "P4 복합동 PH4 8F_F/S-015", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1836, "code": "N088L02M048", "name": "P4 복합동 PH4 8F_F/S-017", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1837, "code": "N088L02M049", "name": "P4 복합동 PH4 8F_F/S-018", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1838, "code": "N088L02M050", "name": "P4 복합동 PH4 8F_F/S-019", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1839, "code": "N088L02M051", "name": "P4 복합동 PH4 8F_F/S-020", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1840, "code": "N088L02M052", "name": "P4 복합동 PH4 8F_F/S-021", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1841, "code": "N088L02M053", "name": "P4 복합동 PH4 8F_F/S-016", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1842, "code": "N088L02M054", "name": "P4 복합동 PH4 8F_F/S-022", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1843, "code": "N088L02M055", "name": "P4 복합동 PH4 8F_F/S-023", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1844, "code": "N088L02M056", "name": "P4 복합동 PH4 8F_F/S-024", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1845, "code": "N088L02M057", "name": "P4 복합동 PH4 8F_F/S-025", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1846, "code": "N088L02M058", "name": "P4 복합동 PH4 8F_F/S-026", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1847, "code": "N088L02M059", "name": "P4 복합동 PH4 8F_F/S-027", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1848, "code": "N088L02M060", "name": "P4 복합동 PH4 8F_F/S-028", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1849, "code": "N088L02M061", "name": "P4 복합동 PH4 8F_F/S-029", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1850, "code": "N088L02M062", "name": "P4 복합동 PH4 8F_F/S-030", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1851, "code": "N088L02M063", "name": "P4 복합동 PH4 8F_F/S-031", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1852, "code": "N088L02M064", "name": "P4 복합동 PH4 8F_F/S-032", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1853, "code": "N088L02M065", "name": "P4 복합동 PH2 8F_F/S-019", "type": "FMM", "sheet": "N88L02", "node": "NODE088"}, {"no": 1854, "code": "N088L03M001", "name": "P4 복합동 PH4 9F TOXIC FLAMMABLE STOCKER_PV-5 존 불꽃감지기-01-상 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1855, "code": "N088L03M002", "name": "P4 복합동 PH4 9F TOXIC FLAMMABLE STOCKER_PV-5 존 불꽃감지기-01-하 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1856, "code": "N088L03M003", "name": "P4 복합동 PH4 9F TOXIC FLAMMABLE STOCKER_PV-5 존 불꽃감지기-02-상 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1857, "code": "N088L03M004", "name": "P4 복합동 PH4 9F TOXIC FLAMMABLE STOCKER_PV-5 존 불꽃감지기-02-하 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1858, "code": "N088L03M005", "name": "P4 복합동 PH4 9F TOXIC FLAMMABLE STOCKER_PV-5 존 불꽃감지기-03-상 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1859, "code": "N088L03M006", "name": "P4 복합동 PH4 9F TOXIC FLAMMABLE STOCKER_PV-5 존 불꽃감지기-03-하 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1860, "code": "N088L03M007", "name": "P4 복합동 PH4 9F TOXIC FLAMMABLE STOCKER_PV-5 존 불꽃감지기-04-상 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1861, "code": "N088L03M008", "name": "P4 복합동 PH4 9F TOXIC FLAMMABLE STOCKER_PV-5 존 불꽃감지기-04-하 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1862, "code": "N088L03M009", "name": "P4 복합동 PH4 9F TOXIC FLAMMABLE STOCKER_PV-5 존 불꽃감지기-05-상 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1863, "code": "N088L03M010", "name": "P4 복합동 PH4 9F TOXIC FLAMMABLE STOCKER_PV-5 존 불꽃감지기-05-하 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1864, "code": "N088L03M011", "name": "P4 복합동 PH4 9F TOXIC FLAMMABLE STOCKER_PV-5 존 불꽃감지기-06-상 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1865, "code": "N088L03M012", "name": "P4 복합동 PH4 9F TOXIC FLAMMABLE STOCKER_PV-5 존 불꽃감지기-06-하 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1866, "code": "N088L03M013", "name": "P4 복합동 PH4 9F TOXIC FLAMMABLE STOCKER_PV-5 존 불꽃감지기-07-상 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1867, "code": "N088L03M014", "name": "P4 복합동 PH4 9F TOXIC FLAMMABLE STOCKER_PV-5 존 불꽃감지기-07-하 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1868, "code": "N088L03M015", "name": "P4 복합동 PH4 9F 복도-1_PV-5 존 TOXIC FLAMMABLE STOCKER RM 불꽃감지기 (01~07) 복구", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1869, "code": "N088L03M016", "name": "P4 복합동 PH4 9F 복도-1_DC전원반-01 전원감시", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1870, "code": "N088L03M017", "name": "P4 복합동 PH4 9F TOXIC FLAMMABLE STOCKER_PV-5 존 불꽃감지기-08-상 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1871, "code": "N088L03M018", "name": "P4 복합동 PH4 9F TOXIC FLAMMABLE STOCKER_PV-5 존 불꽃감지기-08-하 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1872, "code": "N088L03M019", "name": "P4 복합동 PH4 9F TOXIC FLAMMABLE STOCKER_PV-5 존 불꽃감지기-09-하 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1873, "code": "N088L03M020", "name": "P4 복합동 PH4 9F TOXIC FLAMMABLE STOCKER_PV-5 존 불꽃감지기-10-하 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1874, "code": "N088L03M021", "name": "P4 복합동 PH4 9F FLAMMABLE STOCKER_PV-5 존 불꽃감지기-01-상 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1875, "code": "N088L03M022", "name": "P4 복합동 PH4 9F FLAMMABLE STOCKER_PV-5 존 불꽃감지기-01-하 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1876, "code": "N088L03M023", "name": "P4 복합동 PH4 9F FLAMMABLE STOCKER_PV-5 존 불꽃감지기-02-상 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1877, "code": "N088L03M024", "name": "P4 복합동 PH4 9F FLAMMABLE STOCKER_PV-5 존 불꽃감지기-02-하 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1878, "code": "N088L03M025", "name": "P4 복합동 PH4 9F FLAMMABLE STOCKER_PV-5 존 불꽃감지기-03-상 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1879, "code": "N088L03M026", "name": "P4 복합동 PH4 9F FLAMMABLE STOCKER_PV-5 존 불꽃감지기-03-하 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1880, "code": "N088L03M027", "name": "P4 복합동 PH4 9F FLAMMABLE STOCKER_PV-5 존 불꽃감지기-04-상 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1881, "code": "N088L03M028", "name": "P4 복합동 PH4 9F FLAMMABLE STOCKER_PV-5 존 불꽃감지기-04-하 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1882, "code": "N088L03M029", "name": "P4 복합동 PH4 9F FLAMMABLE STOCKER_PV-5 존 불꽃감지기-05-하 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1883, "code": "N088L03M030", "name": "P4 복합동 PH4 9F FLAMMABLE STOCKER_PV-5 존 불꽃감지기-06-하 화재", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1884, "code": "N088L03M031", "name": "P4 복합동 PH4 9F 복도-1_PV-5 존 TOXIC / FLAMMABLE STOCKER 불꽃감지기 복구", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1885, "code": "N088L03M032", "name": "P4 복합동 PH4 9F 복도-1_DC전원반-02 전원감시", "type": "FMM", "sheet": "N88L03", "node": "NODE088"}, {"no": 1886, "code": "N088L04D004", "name": "P4 복합동 PH4 9F #11 덕트PIT_PV-5존 연기감지기-01", "type": "FSP", "sheet": "N88L04", "node": "NODE088"}, {"no": 1887, "code": "N088L04D005", "name": "P4 복합동 PH4 9F #11 덕트PIT_PV-5존 연기감지기-02", "type": "FSP", "sheet": "N88L04", "node": "NODE088"}, {"no": 1888, "code": "N088L04D020", "name": "P4 복합동 PH4 9F #12 EPS실_PV-7존 연기감지기-01", "type": "FSP", "sheet": "N88L04", "node": "NODE088"}, {"no": 1889, "code": "N088L04D021", "name": "P4 복합동 PH4 9F #12 EPS실_PV-7존 연기감지기-02", "type": "FSP", "sheet": "N88L04", "node": "NODE088"}, {"no": 1890, "code": "N088L04M032", "name": "P4 복합동 PH4 9F_PH4-9F-F/S-001", "type": "FMM", "sheet": "N88L04", "node": "NODE088"}, {"no": 1891, "code": "N088L04M033", "name": "P4 복합동 PH4 9F_PH4-9F-F/S-002", "type": "FMM", "sheet": "N88L04", "node": "NODE088"}, {"no": 1892, "code": "N088L05M019", "name": "P4 복합동 PH4 9F #11 A/V실_D.E.V(일제살수)-48 존 T/S-01", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1893, "code": "N088L05M020", "name": "P4 복합동 PH4 9F #11 A/V실_D.E.V(일제살수)-48 존 T/S-02", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1894, "code": "N088L05M021", "name": "P4 복합동 PH4 9F #11 A/V실_D.E.V(일제살수)-48 존 P/S", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1895, "code": "N088L05M022", "name": "P4 복합동 PH4 9F #11 A/V실_D.E.V(일제살수)-48 존 SOL", "type": "FRM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1896, "code": "N088L05M023", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-49 존 T/S-01", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1897, "code": "N088L05M024", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-49 존 T/S-02", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1898, "code": "N088L05M025", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-49 존 P/S", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1899, "code": "N088L05M026", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-49 존 SOL", "type": "FRM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1900, "code": "N088L05M027", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-50 존 T/S-01", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1901, "code": "N088L05M028", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-50 존 T/S-02", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1902, "code": "N088L05M029", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-50 존 P/S", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1903, "code": "N088L05M030", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-50 존 SOL", "type": "FRM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1904, "code": "N088L05M031", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-51 존 T/S-01", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1905, "code": "N088L05M032", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-51 존 T/S-02", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1906, "code": "N088L05M033", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-51 존 P/S", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1907, "code": "N088L05M034", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-51 존 SOL", "type": "FRM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1908, "code": "N088L05M035", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-52 존 T/S-01", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1909, "code": "N088L05M036", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-52 존 T/S-02", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1910, "code": "N088L05M037", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-52 존 P/S", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1911, "code": "N088L05M038", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-52 존 SOL", "type": "FRM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1912, "code": "N088L05M039", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-53 존 T/S-01", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1913, "code": "N088L05M040", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-53 존 T/S-02", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1914, "code": "N088L05M041", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-53 존 P/S", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1915, "code": "N088L05M042", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-53 존 SOL", "type": "FRM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1916, "code": "N088L05M043", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-54 존 T/S-01", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1917, "code": "N088L05M044", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-54 존 T/S-02", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1918, "code": "N088L05M045", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-54 존 P/S", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1919, "code": "N088L05M046", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-54 존 SOL", "type": "FRM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1920, "code": "N088L05M047", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-55 존 T/S-01", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1921, "code": "N088L05M048", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-55 존 T/S-02", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1922, "code": "N088L05M049", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-55 존 P/S", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1923, "code": "N088L05M050", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-55 존 SOL", "type": "FRM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1924, "code": "N088L05M051", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-56 존 T/S-01", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1925, "code": "N088L05M052", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-56 존 T/S-02", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1926, "code": "N088L05M053", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-56 존 P/S", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1927, "code": "N088L05M054", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-56 존 SOL", "type": "FRM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1928, "code": "N088L05M055", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-57 존 T/S-01", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1929, "code": "N088L05M056", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-57 존 T/S-02", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1930, "code": "N088L05M057", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-57 존 P/S", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1931, "code": "N088L05M058", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-57 존 SOL", "type": "FRM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1932, "code": "N088L05M059", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-58 존 T/S-01", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1933, "code": "N088L05M060", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-58 존 T/S-02", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1934, "code": "N088L05M061", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-58 존 P/S", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1935, "code": "N088L05M062", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-58 존 SOL", "type": "FRM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1936, "code": "N088L05M063", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-59 존 T/S-01", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1937, "code": "N088L05M064", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-59 존 T/S-02", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1938, "code": "N088L05M065", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-59 존 P/S", "type": "FMM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1939, "code": "N088L05M066", "name": "P4 복합동 PH4 9F #11 A/V실D.E.V(일제살수)-59 존 SOL", "type": "FRM", "sheet": "N88L05", "node": "NODE088"}, {"no": 1940, "code": "N088L06D005", "name": "P4 복합동 PH4 9F #10 EPS실_PV-5 존 연기감지기-01", "type": "FSP", "sheet": "N88L06", "node": "NODE088"}, {"no": 1941, "code": "N088L06D006", "name": "P4 복합동 PH4 9F #10 EPS실_PV-5 존 연기감지기-02", "type": "FSP", "sheet": "N88L06", "node": "NODE088"}, {"no": 1942, "code": "N088L06M007", "name": "P4 복합동 PH4 9F #11소화전발신기-44", "type": "FMM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1943, "code": "N088L06M008", "name": "P4 복합동 PH4 9F #11경종-44", "type": "FRM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1944, "code": "N088L06M009", "name": "P4 복합동 PH4 9F #11MOV 소화전 ON", "type": "FMM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1945, "code": "N088L06M010", "name": "P4 복합동 PH4 9F #11MOV 소화전 OFF", "type": "FMM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1946, "code": "N088L06M011", "name": "P4 복합동 PH4 9F #11소화전발신기-45", "type": "FMM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1947, "code": "N088L06M012", "name": "P4 복합동 PH4 9F #11경종-45", "type": "FRM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1948, "code": "N088L06M013", "name": "P4 복합동 PH4 9F #11MOV 소화전 ON", "type": "FMM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1949, "code": "N088L06M014", "name": "P4 복합동 PH4 9F #11MOV 소화전 OFF", "type": "FMM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1950, "code": "N088L06M015", "name": "P4 복합동 PH4 9F #11 #11DEV-48존 SVP-01 수계 수동기동", "type": "FMM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1951, "code": "N088L06M016", "name": "P4 복합동 PH4 9F #11 #11DEV-48존 SVP-01 밸브개방", "type": "FRM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1952, "code": "N088L06M017", "name": "P4 복합동 PH4 9F #11 #11DEV-48존 SVP-02 밸브주의", "type": "FRM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1953, "code": "N088L06M018", "name": "P4 복합동 PH4 9F #11 #11DEV-48존 감지선형감지기-01", "type": "FMM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1954, "code": "N088L06M019", "name": "P4 복합동 PH4 9F #11 #11DEV-48존 감지선형감지기-02", "type": "FMM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1955, "code": "N088L06M020", "name": "P4 복합동 PH4 9F #11 #11DEV-48존 감지선형감지기-03", "type": "FMM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1956, "code": "N088L06M021", "name": "P4 복합동 PH4 9F #11 #11DEV-49존 SVP-01 수계 수동기동", "type": "FMM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1957, "code": "N088L06M022", "name": "P4 복합동 PH4 9F #11 #11DEV-49존 SVP-02 밸브개방", "type": "FRM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1958, "code": "N088L06M023", "name": "P4 복합동 PH4 9F #11 #11DEV-49존 SVP-02 밸브주의", "type": "FRM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1959, "code": "N088L06M024", "name": "P4 복합동 PH4 9F #11 #11DEV-49존 감지선형감지기-01", "type": "FMM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1960, "code": "N088L06M025", "name": "P4 복합동 PH4 9F #11 #11DEV-49존 감지선형감지기-02", "type": "FMM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1961, "code": "N088L06M026", "name": "P4 복합동 PH4 9F #11 #11DEV-49존 감지선형감지기-03", "type": "FMM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1962, "code": "N088L06M027", "name": "P4 복합동 PH4 9F #11 #11DEV-50존 SVP-03 수계 수동기동", "type": "FMM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1963, "code": "N088L06M028", "name": "P4 복합동 PH4 9F #11 #11DEV-50존 SVP-03 밸브개방", "type": "FRM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1964, "code": "N088L06M029", "name": "P4 복합동 PH4 9F #11 #11DEV-50존 SVP-03 밸브주의", "type": "FRM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1965, "code": "N088L06M030", "name": "P4 복합동 PH4 9F #11 #11DEV-50존 감지선형감지기-1", "type": "FMM", "sheet": "N88L06", "node": "NODE088"}, {"no": 1966, "code": "N088L07M001", "name": "P4 복합동 PH4 9F_소화전발신기-46", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1967, "code": "N088L07M002", "name": "P4 복합동 PH4 9F_경종-46", "type": "FRM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1968, "code": "N088L07M003", "name": "P4 복합동 PH4 9F #11_#11 MOV 소화전 ON", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1969, "code": "N088L07M004", "name": "P4 복합동 PH4 9F #11_#11 MOV 소화전 OFF", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1970, "code": "N088L07M005", "name": "P4 복합동 PH4 9F_소화전발신기-47", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1971, "code": "N088L07M006", "name": "P4 복합동 PH4 9F_경종-47", "type": "FRM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1972, "code": "N088L07M007", "name": "P4 복합동 PH4 9F #11_#11 MOV 소화전 ON", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1973, "code": "N088L07M008", "name": "P4 복합동 PH4 9F #11_#11 MOV 소화전 OFF", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1974, "code": "N088L07M009", "name": "P4 복합동 PH4 9F_소화전발신기-48", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1975, "code": "N088L07M010", "name": "P4 복합동 PH4 9F_경종-48", "type": "FRM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1976, "code": "N088L07M011", "name": "P4 복합동 PH4 9F #11_#11 MOV 소화전 ON", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1977, "code": "N088L07M012", "name": "P4 복합동 PH4 9F #11_#11 MOV 소화전 OFF", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1978, "code": "N088L07M013", "name": "P4 복합동 PH4 9F_소화전발신기-49", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1979, "code": "N088L07M014", "name": "P4 복합동 PH4 9F_경종-49", "type": "FRM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1980, "code": "N088L07M015", "name": "P4 복합동 PH4 9F #11_#11 MOV 소화전 ON", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1981, "code": "N088L07M016", "name": "P4 복합동 PH4 9F #11_#11 MOV 소화전 OFF", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1982, "code": "N088L07M017", "name": "P4 복합동 PH4 9F_소화전발신기-50", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1983, "code": "N088L07M018", "name": "P4 복합동 PH4 9F_경종-50", "type": "FRM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1984, "code": "N088L07M019", "name": "P4 복합동 PH4 9F #11_#11 MOV 소화전 ON", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1985, "code": "N088L07M020", "name": "P4 복합동 PH4 9F #11_#11 MOV 소화전 OFF", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1986, "code": "N088L07M021", "name": "P4 복합동 PH4 9F소화전발신기-51", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1987, "code": "N088L07M022", "name": "P4 복합동 PH4 9F경종-51", "type": "FRM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1988, "code": "N088L07M023", "name": "P4 복합동 PH4 9F #11#11 MOV 소화전 ON", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1989, "code": "N088L07M024", "name": "P4 복합동 PH4 9F #11#11 MOV 소화전 OFF", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1990, "code": "N088L07M025", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-54존 SVP-04 수계 수동기동", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1991, "code": "N088L07M026", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-54존 SVP-04 밸브개방", "type": "FRM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1992, "code": "N088L07M027", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-54존 SVP-04 밸브주의", "type": "FRM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1993, "code": "N088L07M028", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-54존 감지선형감지기-1", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1994, "code": "N088L07M029", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-54존 감지선형감지기-2", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1995, "code": "N088L07M030", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-54존 감지선형감지기-3", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1996, "code": "N088L07M031", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-55존 SVP-05 수계 수동기동", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1997, "code": "N088L07M032", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-55존 SVP-05 밸브개방", "type": "FRM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1998, "code": "N088L07M033", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-55존 SVP-05 밸브주의", "type": "FRM", "sheet": "N88L07", "node": "NODE088"}, {"no": 1999, "code": "N088L07M034", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-55존 감지선형감지기-1", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 2000, "code": "N088L07M035", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-55존 감지선형감지기-2", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 2001, "code": "N088L07M036", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-55존 감지선형감지기-3", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 2002, "code": "N088L07M037", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-56존 SVP-06 수계 수동기동", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 2003, "code": "N088L07M038", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-56존 SVP-06 밸브개방", "type": "FRM", "sheet": "N88L07", "node": "NODE088"}, {"no": 2004, "code": "N088L07M039", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-56존 SVP-06 밸브주의", "type": "FRM", "sheet": "N88L07", "node": "NODE088"}, {"no": 2005, "code": "N088L07M040", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-56존 감지선형감지기-1", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 2006, "code": "N088L07M041", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-56존 감지선형감지기-2", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 2007, "code": "N088L07M042", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-56존 감지선형감지기-3", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 2008, "code": "N088L07M043", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-57존 SVP-07 수계 수동기동", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 2009, "code": "N088L07M044", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-57존 SVP-07 밸브개방", "type": "FRM", "sheet": "N88L07", "node": "NODE088"}, {"no": 2010, "code": "N088L07M045", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-57존 SVP-07 밸브주의", "type": "FRM", "sheet": "N88L07", "node": "NODE088"}, {"no": 2011, "code": "N088L07M046", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-57존 감지선형감지기-1", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 2012, "code": "N088L07M047", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-57존 감지선형감지기-2", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}, {"no": 2013, "code": "N088L07M048", "name": "P4 복합동 PH4 9F #11 A/V실_DEV-57존 감지선형감지기-3", "type": "FMM", "sheet": "N88L07", "node": "NODE088"}];
+
+let DATA = EMBEDDED_DATA;
+
+
+const qEl = document.getElementById('q');
+const mainEl = document.getElementById('main');
+const idleState = document.getElementById('idleState');
+const clearBtn = document.getElementById('clearBtn');
+const hintEl = document.getElementById('hint');
+document.getElementById('totalCount').textContent = DATA.length;
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function badge(type){
+  return `<span class="badge badge-${type}">${type}</span>`;
+}
+
+function renderRow(item, cls){
+  return `
+    <div class="row ${cls}">
+      <div class="dot"></div>
+      <div class="body">
+        <div class="top-line">
+          <span class="code mono">${escapeHtml(item.code)}</span>
+          ${badge(item.type)}
+          <span class="no mono">NO.${item.no}</span>
+        </div>
+        <div class="name">${escapeHtml(item.name)}</div>
+        <div class="meta mono">${escapeHtml(item.sheet)} · ${escapeHtml(item.node)}</div>
+      </div>
+    </div>`;
+}
+
+function renderMatch(index){
+  const start = Math.max(0, index - 5);
+  const end = Math.min(DATA.length - 1, index + 5);
+  let html = '';
+
+  html += `<div class="trace">`;
+  for(let i = start; i < index; i++){
+    if(i === start) html += `<div class="section-label">이전 5개</div>`;
+    html += renderRow(DATA[i], 'context');
+  }
+  html += renderRow(DATA[index], 'match');
+  for(let i = index + 1; i <= end; i++){
+    if(i === index + 1) html += `<div class="section-label">다음 5개</div>`;
+    html += renderRow(DATA[i], 'context');
+  }
+  html += `</div>`;
+
+  mainEl.innerHTML = html;
+}
+
+function renderPicker(matches){
+  let html = `<div class="picker">`;
+  matches.slice(0, 30).forEach(item => {
+    html += `<button class="picker-item" data-code="${escapeHtml(item.code)}">
+      <span class="code mono">${escapeHtml(item.code)}</span>
+      <span class="name">${escapeHtml(item.name)}</span>
+    </button>`;
+  });
+  html += `</div>`;
+  if(matches.length > 30){
+    html += `<div class="hint" style="text-align:center;margin-top:10px;">그 외 ${matches.length - 30}개 더 있습니다. 더 구체적으로 입력해 주세요.</div>`;
+  }
+  mainEl.innerHTML = html;
+
+  mainEl.querySelectorAll('.picker-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      qEl.value = btn.dataset.code;
+      doSearch();
+    });
+  });
+}
+
+function renderEmpty(){
+  mainEl.innerHTML = `
+    <div class="state">
+      <div class="icon">⚠️</div>
+      <div class="msg">일치하는 회로번호가 없습니다.<br>입력값을 다시 확인해 주세요.</div>
+    </div>`;
+}
+
+function renderIdle(){
+  mainEl.innerHTML = '';
+  mainEl.appendChild(idleState);
+}
+
+function doSearch(){
+  const raw = qEl.value.trim().toUpperCase();
+  clearBtn.classList.toggle('show', raw.length > 0);
+
+  if(!raw){
+    renderIdle();
+    hintEl.textContent = '회로번호를 입력하면 위/아래 인접 회로 5개씩 함께 표시됩니다.';
+    return;
+  }
+
+  const exactIndex = DATA.findIndex(d => d.code === raw);
+  if(exactIndex !== -1){
+    renderMatch(exactIndex);
+    hintEl.textContent = `일치: ${DATA[exactIndex].code}`;
+    return;
+  }
+
+  const partial = DATA.filter(d => d.code.includes(raw));
+  if(partial.length === 1){
+    const idx = DATA.findIndex(d => d.code === partial[0].code);
+    renderMatch(idx);
+    hintEl.textContent = `일치: ${partial[0].code}`;
+    return;
+  }
+  if(partial.length > 1){
+    renderPicker(partial);
+    hintEl.textContent = `${partial.length}개 후보 · 탭하여 선택`;
+    return;
+  }
+
+  renderEmpty();
+  hintEl.textContent = '검색 결과 없음';
+}
+
+qEl.addEventListener('input', doSearch);
+clearBtn.addEventListener('click', () => {
+  qEl.value = '';
+  qEl.focus();
+  doSearch();
+});
+
+// 컬럼 순서: NO, 회로번호, CRT 명칭, TYPE, 출처 시트, 출처 노드 (헤더 행 제외)
+function csvRowsToData(rows){
+  const out = [];
+  rows.forEach(r => {
+    const code = (r[1] || '').toString().trim();
+    if(!code || code.toUpperCase() === '회로번호') return; // 헤더/빈행 skip
+    out.push({
+      no: r[0] || '',
+      code: code,
+      name: (r[2] || '').toString().trim(),
+      type: (r[3] || '').toString().trim(),
+      sheet: (r[4] || '').toString().trim(),
+      node: (r[5] || '').toString().trim(),
+    });
+  });
+  return out;
+}
+
+function loadFromGoogleSheet(){
+  if(!GOOGLE_SHEET_CSV_URL){ return; }
+  fetch(GOOGLE_SHEET_CSV_URL, {cache: 'no-store'})
+    .then(res => {
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      return res.text();
+    })
+    .then(csvText => {
+      const parsed = Papa.parse(csvText, {skipEmptyLines: true});
+      const rows = parsed.data.slice(1); // 헤더 제거
+      const fresh = csvRowsToData(rows);
+      if(fresh.length > 0){
+        DATA = fresh;
+        document.getElementById('totalCount').textContent = DATA.length;
+        hintEl.textContent = '최신 데이터 로드 완료 · 회로번호를 입력해 주세요.';
+      }
+    })
+    .catch(err => {
+      console.warn('구글 시트 로드 실패, 내장 데이터 사용:', err);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  qEl.focus();
+  loadFromGoogleSheet();
+});
+</script>
+</body>
+</html>
