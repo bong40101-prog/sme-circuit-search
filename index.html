@@ -396,8 +396,9 @@ function isFlexibleMatch(q, code){
     // D 또는 M을 명시한 경우: 해당 문자까지 일치해야 함 (D003 ≠ M003)
     return (qNoNL.length > 0 && codeNoNL(code).includes(qNoNL)) || code.includes(q);
   } else {
-    // D/M 생략한 경우: 숫자만 맞으면 D/M 둘 다 매칭 (단, 빈 문자열은 매칭에서 제외)
-    return (qDigits.length > 0 && codeDigitsOnly(code).includes(qDigits)) ||
+    // D/M 생략한 경우: 숫자만 맞으면 D/M 둘 다 매칭
+    // 단, 숫자가 1~2자리뿐이면 거의 모든 코드에 우연히 포함되므로(예: "3F"→"3") 제외
+    return (qDigits.length >= 3 && codeDigitsOnly(code).includes(qDigits)) ||
            (qNoNL.length > 0 && codeNoNL(code).includes(qNoNL)) ||
            code.includes(q);
   }
@@ -409,12 +410,10 @@ function normalizeName(str){
 }
 function isNameMatch(rawQuery, name){
   if(!rawQuery || !name) return false;
-  const nq = normalizeName(rawQuery);
-  if(nq.length < 2) return false; // 한두 글자로는 이름 검색 과매칭 방지
-  const nqNoSpace = nq.replace(/\s+/g, '');
-  const nn = normalizeName(name);
-  const nnNoSpace = nn.replace(/\s+/g, '');
-  return nn.includes(nq) || nnNoSpace.includes(nqNoSpace);
+  const terms = rawQuery.trim().toUpperCase().split(/\s+/).filter(Boolean);
+  if(terms.length === 0) return false;
+  const nn = name.toUpperCase();
+  return terms.every(t => nn.includes(t));
 }
 
 function doSearch(){
