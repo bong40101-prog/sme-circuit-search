@@ -199,6 +199,36 @@
   .sheet-empty{font-size:12.5px; color:#566072;}
   .sheet-loading{font-size:12.5px; color:var(--sub); padding:12px 0;}
 
+  .sheet-back{
+    position:absolute; top:12px; left:14px; height:30px; padding:0 10px; border-radius:8px;
+    border:none; background:var(--panel-2); color:var(--sub); font-size:12.5px; cursor:pointer;
+  }
+  .sheet-code{margin-top:8px; padding-left:0;}
+  .sheet-code.with-back{padding-left:62px;}
+
+  .action-list{display:flex; flex-direction:column; gap:10px;}
+  .action-btn{
+    display:flex; align-items:center; gap:12px; text-align:left;
+    background:var(--panel-2); border:1px solid var(--line); border-radius:12px;
+    padding:14px 14px; cursor:pointer;
+  }
+  .action-btn:active{border-color:var(--amber); background:rgba(255,176,32,0.08);}
+  .action-icon{font-size:20px; flex-shrink:0;}
+  .action-text{display:flex; flex-direction:column; gap:2px;}
+  .action-title{font-size:14px; font-weight:700; color:var(--text);}
+  .action-sub{font-size:11.5px; color:var(--sub);}
+
+  .group-list{display:flex; flex-direction:column; gap:8px;}
+  .group-row{
+    display:block; width:100%; text-align:left; cursor:pointer;
+    background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:10px 12px;
+  }
+  .group-row .top-line{display:flex; align-items:center; gap:8px; margin-bottom:3px;}
+  .group-row .code{font-size:13.5px; font-weight:700; color:var(--text);}
+  .group-row .gname{font-size:12px; color:var(--sub); line-height:1.5;}
+  .group-row.current{border-color:var(--amber); background:rgba(255,176,32,0.10);}
+  .group-row.current .code{color:var(--amber);}
+
   @media (min-width:700px){
     main{padding-top:28px;}
     .brand h1{font-size:16px;}
@@ -493,18 +523,38 @@ function fieldBlock(label, value){
   return `<div class="sheet-field"><div class="k">${escapeHtml(label)}</div><div class="v">${escapeHtml(v)}</div></div>`;
 }
 
+// CRT 명칭에서 언더바(_) 앞부분을 '위치/그룹' 키로 사용 (SOL 묶음 판별 방식과 동일한 원리)
+function extractPlace(name){
+  if(!name) return null;
+  const idx = name.indexOf('_');
+  if(idx === -1) return null;
+  const place = name.slice(0, idx).trim();
+  return place || null;
+}
+
+function backButton(code){
+  return `<button class="sheet-back" id="sheetBackBtn">‹ 뒤로</button>`;
+}
+
+function bindSheetBack(code){
+  const btn = document.getElementById('sheetBackBtn');
+  if(btn) btn.addEventListener('click', () => openActionSheet(code));
+}
+
 function renderSheetContent(code){
   const item = DATA.find(d => d.code === code);
   const detail = vftMap[code];
 
   let html = `<button class="sheet-close" id="sheetCloseBtn" aria-label="닫기">✕</button>`;
-  html += `<div class="sheet-code mono">${escapeHtml(code)}</div>`;
+  html += backButton(code);
+  html += `<div class="sheet-code mono with-back">${escapeHtml(code)}</div>`;
   if(item) html += `<div class="sheet-name">${escapeHtml(item.name)}</div>`;
 
   if(!vftLoaded && vftLoading){
     html += `<div class="sheet-loading">상세정보 불러오는 중…</div>`;
     sheetContent.innerHTML = html;
     bindSheetClose();
+    bindSheetBack(code);
     return;
   }
 
@@ -512,6 +562,7 @@ function renderSheetContent(code){
     html += `<div class="sheet-empty">이 회로에 대한 VFT 상세정보가 없습니다.</div>`;
     sheetContent.innerHTML = html;
     bindSheetClose();
+    bindSheetBack(code);
     return;
   }
 
@@ -521,14 +572,20 @@ function renderSheetContent(code){
   html += fieldBlock('FlashLabel', detail['FlashLabel']);
   html += `</div>`;
 
+  // 회로번호 끝자리 문자(D/M)로 감지기(D)/중계기(M) 판별
+  const deviceLetterMatch = code.match(/([DM])\d+$/);
+  const isRelayM = deviceLetterMatch && deviceLetterMatch[1] === 'M';
+
   html += `<div class="sheet-section-title">감도 / 경보 설정</div>`;
   html += `<div class="sheet-grid">`;
   html += fieldBlock('Silenceable', detail['Silenceable']);
   html += fieldBlock('AlarmVer', detail['AlarmVer']);
-  html += fieldBlock('PreAlarmSensitivity', detail['PreAlarmSensitivity']);
-  html += fieldBlock('AlarmSensitivity', detail['AlarmSensitivity']);
-  html += fieldBlock('PreAlarmSensitivityUnocc', detail['PreAlarmSensitivityUnocc']);
-  html += fieldBlock('AlarmSensitivityUnocc', detail['AlarmSensitivityUnocc']);
+  if(!isRelayM){
+    html += fieldBlock('PreAlarmSensitivity', detail['PreAlarmSensitivity']);
+    html += fieldBlock('AlarmSensitivity', detail['AlarmSensitivity']);
+    html += fieldBlock('PreAlarmSensitivityUnocc', detail['PreAlarmSensitivityUnocc']);
+    html += fieldBlock('AlarmSensitivityUnocc', detail['AlarmSensitivityUnocc']);
+  }
   html += `</div>`;
 
   const cbeValues = [];
@@ -545,6 +602,7 @@ function renderSheetContent(code){
 
   sheetContent.innerHTML = html;
   bindSheetClose();
+  bindSheetBack(code);
 }
 
 function renderSheetError(){
@@ -554,14 +612,98 @@ function renderSheetError(){
   bindSheetClose();
 }
 
+// 같은 '위치' 그룹에 속한 회로 리스트 (SOL 묶음처럼)
+function renderGroupContent(code){
+  const item = DATA.find(d => d.code === code);
+  let html = `<button class="sheet-close" id="sheetCloseBtn" aria-label="닫기">✕</button>`;
+  html += backButton(code);
+  html += `<div class="sheet-code mono with-back">${escapeHtml(code)}</div>`;
+  if(item) html += `<div class="sheet-name">${escapeHtml(item.name)}</div>`;
+
+  if(!item){
+    html += `<div class="sheet-empty">회로 정보를 찾을 수 없습니다.</div>`;
+    sheetContent.innerHTML = html;
+    bindSheetClose(); bindSheetBack(code);
+    return;
+  }
+
+  const place = extractPlace(item.name);
+  if(!place){
+    html += `<div class="sheet-section-title">연결된 회로</div>`;
+    html += `<div class="sheet-empty">이 회로는 묶을 수 있는 위치 정보(언더바 구분 명칭)가 없습니다.</div>`;
+    sheetContent.innerHTML = html;
+    bindSheetClose(); bindSheetBack(code);
+    return;
+  }
+
+  const members = DATA.filter(d => extractPlace(d.name) === place);
+  html += `<div class="sheet-section-title">연결된 회로 · ${escapeHtml(place)} (${members.length})</div>`;
+  html += `<div class="group-list">`;
+  members.forEach(m => {
+    const isCurrent = m.code === code;
+    html += `
+      <button class="group-row ${isCurrent ? 'current' : ''}" data-code="${escapeHtml(m.code)}">
+        <div class="top-line">
+          <span class="code mono">${escapeHtml(m.code)}</span>
+          ${badge(m.type)}
+        </div>
+        <div class="gname">${escapeHtml(m.name)}</div>
+      </button>`;
+  });
+  html += `</div>`;
+
+  sheetContent.innerHTML = html;
+  bindSheetClose();
+  bindSheetBack(code);
+
+  sheetContent.querySelectorAll('.group-row').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetCode = btn.dataset.code;
+      // 검색창에도 반영해서 위/아래 5개 리스트와 동기화
+      qEl.value = targetCode;
+      doSearch();
+      openActionSheet(targetCode);
+    });
+  });
+}
+
 function bindSheetClose(){
   const btn = document.getElementById('sheetCloseBtn');
   if(btn) btn.addEventListener('click', closeSheet);
 }
 
-function openSheet(code){
+// 카드를 탭했을 때 뜨는 선택 메뉴 (포인트 자세히 보기 / 연결된 회로 리스트 보기)
+function openActionSheet(code){
   sheetPanel.dataset.openCode = code;
-  renderSheetContent(code);
+  const item = DATA.find(d => d.code === code);
+
+  let html = `<button class="sheet-close" id="sheetCloseBtn" aria-label="닫기">✕</button>`;
+  html += `<div class="sheet-code mono">${escapeHtml(code)}</div>`;
+  if(item) html += `<div class="sheet-name">${escapeHtml(item.name)}</div>`;
+
+  html += `<div class="sheet-section-title">선택</div>`;
+  html += `<div class="action-list">
+    <button class="action-btn" id="actDetail">
+      <span class="action-icon">🔍</span>
+      <span class="action-text">
+        <span class="action-title">포인트 자세히 보기</span>
+        <span class="action-sub">TypeLabel, 감도, CBE 연동 등 상세정보</span>
+      </span>
+    </button>
+    <button class="action-btn" id="actGroup">
+      <span class="action-icon">🔗</span>
+      <span class="action-text">
+        <span class="action-title">연결된 회로 리스트 보기</span>
+        <span class="action-sub">같은 위치(구역)에 묶인 회로 전체 보기</span>
+      </span>
+    </button>
+  </div>`;
+
+  sheetContent.innerHTML = html;
+  bindSheetClose();
+  document.getElementById('actDetail').addEventListener('click', () => renderSheetContent(code));
+  document.getElementById('actGroup').addEventListener('click', () => renderGroupContent(code));
+
   sheetBackdrop.classList.add('show');
   sheetPanel.classList.add('show');
   if(!vftLoaded) loadVftData();
@@ -578,7 +720,7 @@ sheetBackdrop.addEventListener('click', closeSheet);
 mainEl.addEventListener('click', (e) => {
   const bodyEl = e.target.closest('.row .body');
   if(bodyEl && bodyEl.dataset.code){
-    openSheet(bodyEl.dataset.code);
+    openActionSheet(bodyEl.dataset.code);
   }
 });
 
