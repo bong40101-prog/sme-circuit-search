@@ -46,12 +46,9 @@
   .brand{
     display:flex; align-items:baseline; gap:8px; margin-bottom:12px;
   }
-  .brand .tag{
-    font-size:11px; letter-spacing:.14em; color:var(--amber);
-    font-family:"JetBrains Mono", monospace; font-weight:600;
-    border:1px solid var(--amber-dim); padding:2px 6px; border-radius:3px;
-  }
-  .brand h1{font-size:15px; margin:0; font-weight:600; color:var(--text);}
+  .title-link{text-decoration:none; cursor:pointer;}
+  .title-link:active .brand h1{color:var(--amber);}
+  .brand h1{font-size:15px; margin:0; font-weight:600; color:var(--text); transition:color .1s;}
   .brand h1 span{color:var(--sub); font-weight:400;}
 
   .search-wrap{position:relative;}
@@ -240,8 +237,7 @@
 
 <header>
   <div class="brand">
-    <span class="tag mono">P4-BLD</span>
-    <h1>SME 회로 검색 사이트 <span>· 소방설비 회로번호 조회</span></h1>
+    <a href="/" class="title-link"><h1>SME 회로 검색 사이트 <span>· 소방설비 회로번호 조회</span></h1></a>
   </div>
   <div class="search-wrap">
     <input id="q" class="mono" type="text" inputmode="text" autocomplete="off" autocapitalize="characters"
