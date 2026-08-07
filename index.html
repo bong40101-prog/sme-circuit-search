@@ -394,10 +394,12 @@ function isFlexibleMatch(q, code){
 
   if(hasLetter){
     // D 또는 M을 명시한 경우: 해당 문자까지 일치해야 함 (D003 ≠ M003)
-    return codeNoNL(code).includes(qNoNL) || code.includes(q);
+    return (qNoNL.length > 0 && codeNoNL(code).includes(qNoNL)) || code.includes(q);
   } else {
-    // D/M 생략한 경우: 숫자만 맞으면 D/M 둘 다 매칭
-    return codeDigitsOnly(code).includes(qDigits) || codeNoNL(code).includes(qNoNL) || code.includes(q);
+    // D/M 생략한 경우: 숫자만 맞으면 D/M 둘 다 매칭 (단, 빈 문자열은 매칭에서 제외)
+    return (qDigits.length > 0 && codeDigitsOnly(code).includes(qDigits)) ||
+           (qNoNL.length > 0 && codeNoNL(code).includes(qNoNL)) ||
+           code.includes(q);
   }
 }
 
