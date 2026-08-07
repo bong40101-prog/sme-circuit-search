@@ -270,33 +270,60 @@ function renderIdle(){
   mainEl.appendChild(idleState);
 }
 
-function doSearch(){
-  const raw = qEl.value.trim().toUpperCase();
-  clearBtn.classList.toggle('show', raw.length > 0);
+// 회로번호 유연 검색: 공백 무시, N/L 생략 허용, D/M 문자 생략 시 둘 다 매칭
+function normalizeQuery(str){
+  return str.trim().toUpperCase().replace(/\s+/g, '');
+}
+function codeNoNL(code){
+  return code.replace(/[NL]/g, ''); // N, L 제거 (예: N088L01D003 → 08801D003)
+}
+function codeDigitsOnly(code){
+  return code.replace(/[^0-9]/g, ''); // 숫자만 (예: N088L01D003 → 08801003)
+}
+function isFlexibleMatch(q, code){
+  if(!q) return false;
+  if(code === q) return true;
 
-  if(!raw){
+  const qNoNL = q.replace(/[NL]/g, '');
+  const qDigits = q.replace(/[^0-9]/g, '');
+  const hasLetter = /[DM]/.test(qNoNL);
+
+  if(hasLetter){
+    // D 또는 M을 명시한 경우: 해당 문자까지 일치해야 함 (D003 ≠ M003)
+    return codeNoNL(code).includes(qNoNL) || code.includes(q);
+  } else {
+    // D/M 생략한 경우: 숫자만 맞으면 D/M 둘 다 매칭
+    return codeDigitsOnly(code).includes(qDigits) || codeNoNL(code).includes(qNoNL) || code.includes(q);
+  }
+}
+
+function doSearch(){
+  const q = normalizeQuery(qEl.value);
+  clearBtn.classList.toggle('show', q.length > 0);
+
+  if(!q){
     renderIdle();
     hintEl.textContent = '회로번호를 입력하면 위/아래 인접 회로 5개씩 함께 표시됩니다.';
     return;
   }
 
-  const exactIndex = DATA.findIndex(d => d.code === raw);
+  const exactIndex = DATA.findIndex(d => d.code === q);
   if(exactIndex !== -1){
     renderMatch(exactIndex);
     hintEl.textContent = `일치: ${DATA[exactIndex].code}`;
     return;
   }
 
-  const partial = DATA.filter(d => d.code.includes(raw));
-  if(partial.length === 1){
-    const idx = DATA.findIndex(d => d.code === partial[0].code);
+  const matches = DATA.filter(d => isFlexibleMatch(q, d.code));
+  if(matches.length === 1){
+    const idx = DATA.findIndex(d => d.code === matches[0].code);
     renderMatch(idx);
-    hintEl.textContent = `일치: ${partial[0].code}`;
+    hintEl.textContent = `일치: ${matches[0].code}`;
     return;
   }
-  if(partial.length > 1){
-    renderPicker(partial);
-    hintEl.textContent = `${partial.length}개 후보 · 탭하여 선택`;
+  if(matches.length > 1){
+    renderPicker(matches);
+    hintEl.textContent = `${matches.length}개 후보 · 탭하여 선택`;
     return;
   }
 
