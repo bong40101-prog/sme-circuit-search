@@ -508,7 +508,10 @@ function loadVftData(){
       vftLoading = false;
       // 바텀시트가 '불러오는 중'으로 열려 있었다면 갱신
       const openCode = sheetPanel.dataset.openCode;
-      if(openCode) renderSheetContent(openCode);
+      const openView = sheetPanel.dataset.openView;
+      if(openCode === undefined) return;
+      if(openView === 'group') renderGroupContent(openCode);
+      else if(openView === 'detail') renderSheetContent(openCode);
     })
     .catch(err => {
       vftLoading = false;
@@ -523,13 +526,45 @@ function fieldBlock(label, value){
   return `<div class="sheet-field"><div class="k">${escapeHtml(label)}</div><div class="v">${escapeHtml(v)}</div></div>`;
 }
 
-// CRT 명칭에서 언더바(_) 앞부분을 '위치/그룹' 키로 사용 (SOL 묶음 판별 방식과 동일한 원리)
-function extractPlace(name){
-  if(!name) return null;
-  const idx = name.indexOf('_');
-  if(idx === -1) return null;
-  const place = name.slice(0, idx).trim();
-  return place || null;
+// ── SOL 검토와 동일한 원리: CBE(연동 코드)가 실제로 겹치는 회로끼리 묶음 ──
+// Z901~Z907처럼 건물 전체에 공통으로 걸리는 코드는 제외하고,
+// 3자리 Z/ZL 코드의 앞 2자리(그룹 베이스, 예: Z561/Z563 → 56)가 같으면 같은 구역으로 판별한다.
+const COMMON_CBE_CODES = ['901','902','903','904','905','906','907'];
+
+function nodePrefix(code){
+  const m = code.match(/^N\d+/i);
+  return m ? m[0].toUpperCase() : '';
+}
+
+// 회로의 '구역 베이스' 목록 반환 (예: ['Z56','ZL16'])
+function distinctiveBasesOf(code){
+  const detail = vftMap[code];
+  if(!detail) return [];
+  const out = [];
+  for(let i = 1; i <= 10; i++){
+    const v = (detail['CBE' + i] || '').toString().trim();
+    const m = v.match(/^(ZL?)(\d{3})$/i);
+    if(!m) continue;
+    const num = m[2];
+    if(COMMON_CBE_CODES.includes(num)) continue;
+    out.push(num.slice(0, 2)); // Z/ZL 접두사 구분 없이 숫자 베이스(앞 2자리)만 비교 (파이썬의 ZL?{grp}\d 패턴과 동일)
+  }
+  return out;
+}
+
+// 표시용: 회로의 distinctive 원본 코드 목록 (Z561, ZL167 등)
+function distinctiveCodesOf(code){
+  const detail = vftMap[code];
+  if(!detail) return [];
+  const out = [];
+  for(let i = 1; i <= 10; i++){
+    const v = (detail['CBE' + i] || '').toString().trim();
+    const m = v.match(/^(ZL?)(\d{3})$/i);
+    if(!m) continue;
+    if(COMMON_CBE_CODES.includes(m[2])) continue;
+    out.push(v.toUpperCase());
+  }
+  return out;
 }
 
 function backButton(code){
@@ -542,6 +577,7 @@ function bindSheetBack(code){
 }
 
 function renderSheetContent(code){
+  sheetPanel.dataset.openView = 'detail';
   const item = DATA.find(d => d.code === code);
   const detail = vftMap[code];
 
@@ -612,8 +648,9 @@ function renderSheetError(){
   bindSheetClose();
 }
 
-// 같은 '위치' 그룹에 속한 회로 리스트 (SOL 묶음처럼)
+// SOL 검토 방식과 동일: CBE(연동 코드)가 실제로 겹치는 회로끼리 묶어서 보여줌
 function renderGroupContent(code){
+  sheetPanel.dataset.openView = 'group';
   const item = DATA.find(d => d.code === code);
   let html = `<button class="sheet-close" id="sheetCloseBtn" aria-label="닫기">✕</button>`;
   html += backButton(code);
@@ -627,17 +664,40 @@ function renderGroupContent(code){
     return;
   }
 
-  const place = extractPlace(item.name);
-  if(!place){
-    html += `<div class="sheet-section-title">연결된 회로</div>`;
-    html += `<div class="sheet-empty">이 회로는 묶을 수 있는 위치 정보(언더바 구분 명칭)가 없습니다.</div>`;
+  if(!vftLoaded && vftLoading){
+    html += `<div class="sheet-loading">연동 코드(CBE) 불러오는 중…</div>`;
     sheetContent.innerHTML = html;
     bindSheetClose(); bindSheetBack(code);
     return;
   }
 
-  const members = DATA.filter(d => extractPlace(d.name) === place);
-  html += `<div class="sheet-section-title">연결된 회로 · ${escapeHtml(place)} (${members.length})</div>`;
+  const myBases = distinctiveBasesOf(code);
+  if(myBases.length === 0){
+    html += `<div class="sheet-section-title">연결된 회로</div>`;
+    html += `<div class="sheet-empty">이 회로는 구역 전용 연동 코드가 없어 그룹을 찾을 수 없습니다.</div>`;
+    sheetContent.innerHTML = html;
+    bindSheetClose(); bindSheetBack(code);
+    return;
+  }
+
+  const np = nodePrefix(code);
+  const members = DATA.filter(d => {
+    if(d.code === code) return true;
+    if(nodePrefix(d.code) !== np) return false;
+    const bases = distinctiveBasesOf(d.code);
+    return bases.some(b => myBases.includes(b));
+  });
+
+  if(members.length <= 1){
+    html += `<div class="sheet-section-title">연결된 회로</div>`;
+    html += `<div class="sheet-empty">이 회로와 연동 코드가 겹치는 다른 회로가 없습니다.</div>`;
+    sheetContent.innerHTML = html;
+    bindSheetClose(); bindSheetBack(code);
+    return;
+  }
+
+  const myCodes = distinctiveCodesOf(code);
+  html += `<div class="sheet-section-title">연결된 회로 · 연동코드 ${myCodes.join(', ')} (${members.length})</div>`;
   html += `<div class="group-list">`;
   members.forEach(m => {
     const isCurrent = m.code === code;
@@ -675,6 +735,7 @@ function bindSheetClose(){
 // 카드를 탭했을 때 뜨는 선택 메뉴 (포인트 자세히 보기 / 연결된 회로 리스트 보기)
 function openActionSheet(code){
   sheetPanel.dataset.openCode = code;
+  sheetPanel.dataset.openView = 'menu';
   const item = DATA.find(d => d.code === code);
 
   let html = `<button class="sheet-close" id="sheetCloseBtn" aria-label="닫기">✕</button>`;
@@ -713,6 +774,7 @@ function closeSheet(){
   sheetBackdrop.classList.remove('show');
   sheetPanel.classList.remove('show');
   delete sheetPanel.dataset.openCode;
+  delete sheetPanel.dataset.openView;
 }
 
 sheetBackdrop.addEventListener('click', closeSheet);
