@@ -125,7 +125,7 @@
   .row .name{font-size:12.5px; color:var(--sub); line-height:1.5;}
   .row .meta{font-size:10.5px; color:#566072; margin-top:5px;}
 
-  .row.match{padding-left:44px;}
+  .row.match{padding-left:44px; scroll-margin-top:150px;}
   .row.match .dot{
     width:16px; height:16px; left:13px; top:22px;
     background:var(--amber); border-color:var(--amber);
@@ -238,6 +238,15 @@ function renderMatch(index){
   html += `</div>`;
 
   mainEl.innerHTML = html;
+
+  // 모바일 키보드 닫기 + 매치된 항목을 화면 위쪽으로 스크롤
+  qEl.blur();
+  const matchEl = mainEl.querySelector('.row.match');
+  if(matchEl){
+    requestAnimationFrame(() => {
+      matchEl.scrollIntoView({behavior: 'smooth', block: 'start'});
+    });
+  }
 }
 
 function renderPicker(matches){
