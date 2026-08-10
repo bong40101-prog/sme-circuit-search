@@ -451,7 +451,15 @@ function doSearch(){
   hintEl.textContent = '검색 결과 없음';
 }
 
-qEl.addEventListener('input', doSearch);
+// 한글/일본어 등 IME 조합 중에는 검색을 실행하지 않음
+// (조합 중간 글자(예: "여")로 잘못 매칭되어 튀는 문제 방지)
+let isComposing = false;
+qEl.addEventListener('compositionstart', () => { isComposing = true; });
+qEl.addEventListener('compositionend', () => { isComposing = false; doSearch(); });
+qEl.addEventListener('input', (e) => {
+  if(isComposing || e.isComposing) return;
+  doSearch();
+});
 clearBtn.addEventListener('click', () => {
   qEl.value = '';
   qEl.focus();
