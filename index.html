@@ -112,6 +112,7 @@
     font-family:"JetBrains Mono", monospace; border:1px solid transparent;
   }
   .badge-FSP{background:rgba(90,169,255,0.18); color:#8cc2ff; border-color:rgba(90,169,255,0.35);}
+  .badge-FST{background:rgba(255,209,102,0.18); color:#ffd166; border-color:rgba(255,209,102,0.35);}
   .badge-FMM{background:rgba(185,138,247,0.18); color:#cba9fa; border-color:rgba(185,138,247,0.35);}
   .badge-FRM{background:rgba(255,138,76,0.18); color:#ffab7a; border-color:rgba(255,138,76,0.35);}
   .row .phase{
@@ -254,7 +255,7 @@
   </div>
 </main>
 
-<footer>총 <span id="totalCount" class="mono"></span>개 회로 · P4 복합동 소방설비 리스트</footer>
+<footer>총 <span id="totalCount" class="mono"></span>개 회로 · 소방설비 리스트</footer>
 
 <div id="sheetBackdrop" class="sheet-backdrop"></div>
 <div id="sheetPanel" class="sheet-panel" role="dialog" aria-modal="true">
@@ -587,7 +588,14 @@ function inferCircuitType(code){
   const detail = vftMap[code];
   const deviceLetterMatch = code.match(/([DM])\d+$/);
   if(!deviceLetterMatch) return '';
-  if(deviceLetterMatch[1] === 'D') return 'FSP'; // 감지기는 항상 FSP
+
+  if(deviceLetterMatch[1] === 'D'){
+    // D(감지기): TypeLabel에 Heat가 있으면 FST(열감지기), 그 외(연기 등)는 FSP
+    const label = detail ? (detail['TypeLabel'] || '').toString().trim() : '';
+    if(/heat/i.test(label)) return 'FST';
+    return 'FSP';
+  }
+
   if(!detail) return '';
   const label = (detail['TypeLabel'] || '').toString().trim();
   if(!label) return '';
