@@ -263,8 +263,43 @@
 </div>
 
 <script>
-const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRaF9eZmbGsSYJihQFrobOZondTlWFreTWfFO-KWqIjMcAiycIUL1ndRbVNHWxiuGwpEAR_vMw9GzOQ/pub?gid=0&single=true&output=csv";
-const VFT_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS9XVOkXPj2qjM1AS3J0QuSDOSh3-h5usmRwMQd5R5o8b9bU0Qd35JBNQVX4LueSkPhuVL-IOF7NcJ-/pub?output=csv";
+// 건물별 회로 리스트 소스 (컬럼 구조가 달라도 각자 map()으로 통일)
+const CIRCUIT_SOURCES = [
+  {
+    // P4 복합동: NO, 회로번호, CRT명칭, TYPE, 출처시트, 출처노드
+    url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRaF9eZmbGsSYJihQFrobOZondTlWFreTWfFO-KWqIjMcAiycIUL1ndRbVNHWxiuGwpEAR_vMw9GzOQ/pub?gid=0&single=true&output=csv",
+    map(r){
+      return {
+        no: (r[0] || '').toString().trim(),
+        code: (r[1] || '').toString().trim(),
+        name: (r[2] || '').toString().trim(),
+        type: (r[3] || '').toString().trim(),
+        sheet: (r[4] || '').toString().trim(),
+        node: (r[5] || '').toString().trim(),
+      };
+    }
+  },
+  {
+    // 그린4동: NO, ADDLIST, Description, 차수 (TYPE 컬럼 없음)
+    url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSlOdqhwUUtfbBxsKTTatKMcvPu6oPOrVXLjrymKjzmHLTsDUD52iVO3_dW1JS2y8PZcAINejGerGYU/pub?output=csv",
+    map(r){
+      return {
+        no: (r[0] || '').toString().trim(),
+        code: (r[1] || '').toString().trim(),
+        name: (r[2] || '').toString().trim(),
+        type: '',
+        sheet: (r[3] || '').toString().trim(),
+        node: '',
+      };
+    }
+  }
+];
+
+// 건물별 VFT(상세정보) 소스 - 둘 다 같은 헤더 구조(ADDLIST, TypeLabel, ... CBE1~10)
+const VFT_SOURCES = [
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vS9XVOkXPj2qjM1AS3J0QuSDOSh3-h5usmRwMQd5R5o8b9bU0Qd35JBNQVX4LueSkPhuVL-IOF7NcJ-/pub?output=csv",
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQhIfua2sW9MRfiYqJvcsHtNth9Amf3aAg3QkLHpYVPpsIzhv5cQ5KAF4bEQbTnfwrxGAeX4Q2BDfyF/pub?output=csv"
+];
 
 let vftMap = {};       // 회로번호(ADDLIST) -> 상세정보
 let vftLoaded = false;
@@ -290,6 +325,7 @@ function escapeHtml(s){
 }
 
 function badge(type){
+  if(!type) return '';
   return `<span class="badge badge-${type}">${type}</span>`;
 }
 
@@ -466,79 +502,73 @@ clearBtn.addEventListener('click', () => {
   doSearch();
 });
 
-// 컬럼 순서: NO, 회로번호, CRT 명칭, TYPE, 출처 시트, 출처 노드 (헤더 행 제외)
-function csvRowsToData(rows){
-  const out = [];
-  rows.forEach(r => {
-    const code = (r[1] || '').toString().trim();
-    if(!code || code.toUpperCase() === '회로번호') return; // 헤더/빈행 skip
-    out.push({
-      no: r[0] || '',
-      code: code,
-      name: (r[2] || '').toString().trim(),
-      type: (r[3] || '').toString().trim(),
-      sheet: (r[4] || '').toString().trim(),
-      node: (r[5] || '').toString().trim(),
-    });
-  });
-  return out;
-}
-
+// 여러 소스(CSV) 컬럼 구조가 달라도 각 source.map()으로 통일해서 하나로 합침
 function loadFromGoogleSheet(){
-  if(!GOOGLE_SHEET_CSV_URL){ return; }
-  fetch(GOOGLE_SHEET_CSV_URL, {cache: 'no-store'})
-    .then(res => {
-      if(!res.ok) throw new Error('HTTP ' + res.status);
-      return res.text();
-    })
-    .then(csvText => {
-      const parsed = Papa.parse(csvText, {skipEmptyLines: true});
-      const rows = parsed.data.slice(1); // 헤더 제거
-      const fresh = csvRowsToData(rows);
-      if(fresh.length > 0){
-        DATA = fresh;
-        document.getElementById('totalCount').textContent = DATA.length;
-        hintEl.textContent = '최신 데이터 로드 완료 · 회로번호 또는 명칭을 입력해 주세요.';
-      }
-    })
-    .catch(err => {
-      console.warn('구글 시트 로드 실패, 내장 데이터 사용:', err);
-    });
+  if(!CIRCUIT_SOURCES.length) return;
+
+  Promise.all(CIRCUIT_SOURCES.map(src =>
+    fetch(src.url, {cache: 'no-store'})
+      .then(res => { if(!res.ok) throw new Error('HTTP ' + res.status); return res.text(); })
+      .then(csvText => {
+        const parsed = Papa.parse(csvText, {skipEmptyLines: true});
+        const rows = parsed.data.slice(1); // 헤더 제거
+        const out = [];
+        rows.forEach(r => {
+          const item = src.map(r);
+          if(item.code) out.push(item);
+        });
+        return out;
+      })
+      .catch(err => {
+        console.warn('회로 리스트 소스 로드 실패:', src.url, err);
+        return [];
+      })
+  )).then(results => {
+    const merged = results.flat();
+    if(merged.length > 0){
+      DATA = merged;
+      document.getElementById('totalCount').textContent = DATA.length;
+      hintEl.textContent = '최신 데이터 로드 완료 · 회로번호 또는 명칭을 입력해 주세요.';
+    }
+  });
 }
 
 // ── VFT 상세정보 (TypeLabel, FlashLabel, Silenceable 등, CBE1~10) ──
+// 여러 건물 소스를 병렬로 불러와서 하나의 vftMap으로 합침 (주소체계가 달라 충돌 없음)
 function loadVftData(){
-  if(!VFT_SHEET_CSV_URL || vftLoading || vftLoaded) return;
+  if(!VFT_SOURCES.length || vftLoading || vftLoaded) return;
   vftLoading = true;
-  fetch(VFT_SHEET_CSV_URL, {cache: 'no-store'})
-    .then(res => {
-      if(!res.ok) throw new Error('HTTP ' + res.status);
-      return res.text();
-    })
-    .then(csvText => {
-      const parsed = Papa.parse(csvText, {skipEmptyLines: true, header: true});
-      const map = {};
-      parsed.data.forEach(row => {
+
+  Promise.all(VFT_SOURCES.map(url =>
+    fetch(url, {cache: 'no-store'})
+      .then(res => { if(!res.ok) throw new Error('HTTP ' + res.status); return res.text(); })
+      .then(csvText => {
+        const parsed = Papa.parse(csvText, {skipEmptyLines: true, header: true});
+        return parsed.data;
+      })
+      .catch(err => {
+        console.warn('VFT 소스 로드 실패:', url, err);
+        return [];
+      })
+  )).then(resultsArrays => {
+    const map = {};
+    resultsArrays.forEach(rows => {
+      rows.forEach(row => {
         const code = (row['ADDLIST'] || '').toString().trim().toUpperCase();
         if(!code) return;
         map[code] = row;
       });
-      vftMap = map;
-      vftLoaded = true;
-      vftLoading = false;
-      // 바텀시트가 '불러오는 중'으로 열려 있었다면 갱신
-      const openCode = sheetPanel.dataset.openCode;
-      const openView = sheetPanel.dataset.openView;
-      if(openCode === undefined) return;
-      if(openView === 'group') renderGroupContent(openCode);
-      else if(openView === 'detail') renderSheetContent(openCode);
-    })
-    .catch(err => {
-      vftLoading = false;
-      console.warn('VFT 상세정보 로드 실패:', err);
-      const openCode = sheetPanel.dataset.openCode;
-      if(openCode) renderSheetError();
     });
+    vftMap = map;
+    vftLoaded = true;
+    vftLoading = false;
+    // 바텀시트가 '불러오는 중'으로 열려 있었다면 갱신
+    const openCode = sheetPanel.dataset.openCode;
+    const openView = sheetPanel.dataset.openView;
+    if(openCode === undefined) return;
+    if(openView === 'group') renderGroupContent(openCode);
+    else if(openView === 'detail') renderSheetContent(openCode);
+  });
 }
 
 function fieldBlock(label, value){
